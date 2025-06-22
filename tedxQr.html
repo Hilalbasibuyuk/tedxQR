@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>TEDx QR Okuyucu</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    body, html {
+      margin: 0; padding: 0;
+      background-color: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      overflow: hidden;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 0;
+    }
+    .logo {
+      width: 200px;
+      margin-bottom: 10px;
+    }
+    .qr-wrapper {
+      position: relative;
+      width: 300px;
+      height: 300px;
+    }
+    #reader {
+      width: 100%;
+      height: 100%;
+      border: 2px solid #fff;
+    }
+    .qr-box-overlay {
+      position: absolute;
+      top: 25%;
+      left: 25%;
+      width: 50%;
+      height: 50%;
+      border: 2px dashed red;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    #message-box {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      padding: 15px 30px;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      display: none;
+      z-index: 9999;
+      box-shadow: 0 0 15px rgba(0,0,0,0.7);
+      white-space: pre-line;
+      max-width: 90%;
+      text-align: center;
+      user-select: none;
+    }
+    #message-box.success {
+      background-color: #28a745;
+      box-shadow: 0 0 15px #28a745cc;
+    }
+    #message-box.warning {
+      background-color: #dc3545;
+      box-shadow: 0 0 15px #dc3545cc;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <img src="logo.png" alt="TEDx Logo" class="logo" />
+    <div class="qr-wrapper">
+      <div id="reader"></div>
+      <div class="qr-box-overlay"></div>
+    </div>
+  </div>
+
+  <div id="message-box"></div>
+
+  <script>
+    let scannedEmails = new Set(JSON.parse(localStorage.getItem('scannedEmails')) || []);
+    const messageBox = document.getElementById('message-box');
+    const reader = new Html5Qrcode("reader");
+
+    let isProcessing = false;
+
+    function showMessage(message, type, callback) {
+      messageBox.textContent = message;
+      messageBox.className = '';
+      messageBox.classList.add(type === 'success' ? 'success' : 'warning');
+      messageBox.style.display = 'block';
+
+      setTimeout(() => {
+        messageBox.style.display = 'none';
+        if (typeof callback === "function") callback();
+      }, 2500);
+    }
+
+    async function startScanner() {
+      await reader.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        onScanSuccess
+      );
+    }
+
+    async function onScanSuccess(decodedText, decodedResult) {
+      if (isProcessing) return;
+      isProcessing = true;
+
+      await reader.stop(); // Tarayıcıyı durdur
+
+      const parts = decodedText.split('-').map(s => s.trim());
+
+      if (parts.length === 2) {
+        const adSoyad = parts[0];
+        const mail = parts[1];
+
+        if (scannedEmails.has(mail)) {
+          showMessage(`Uyarı! "${mail}" mail adresi zaten kayıtlı.`, 'warning', () => {
+            startScanner(); // Mesajdan sonra tekrar başlat
+            isProcessing = false;
+          });
+          console.log(`Tekrarlanan mail: ${mail}`);
+          return;
+        }
+
+        // scannedEmails.add(mail);
+        const response = await fetch("https://script.google.com/macros/s/AKfycbwxS7ISmHNTloOMM3pz7SP2fpbcZrbk3BoT2UNqJvOuNewORboCTh4O2YFzJTaxVyYB/exec", {
+          method: "POST",
+          body: JSON.stringify({ name: adSoyad, email: mail }),
+          headers: { "Content-Type": "application/json" }
+        });
+
+        const result = await response.text();
+
+        if (result === "duplicate") {
+          showMessage(`Uyarı! "${mail}" zaten kayıtlı.`, 'warning', () => {
+            startScanner(); isProcessing = false;
+          });
+        } else {
+          showMessage(`Hoş geldiniz!\n${adSoyad}\n${mail}`, 'success', () => {
+            startScanner(); isProcessing = false;
+          });
+        }
+    }
+
+    // İlk başlatma
+    startScanner();
+  </script>
+
+</body>
+</html>
